@@ -12,7 +12,8 @@ import (
 
 // Hook is a Logrus Hook that sends logs via XMPP.
 type Hook struct {
-	levels []logrus.Level
+	levels    []logrus.Level
+	formatter logrus.Formatter // ignoring default formatter, otherwise TTY causes problems while sending
 
 	xmppConn    *xmpp.Conn
 	xmppConnMtx sync.Mutex
@@ -41,9 +42,10 @@ func NewHook(minLogLevel logrus.Level, receiver, sender, password, serverHost st
 		return nil, err
 	}
 	return &Hook{
-		levels:   levelsFrom(minLogLevel),
-		xmppConn: conn,
-		receiver: receiver,
+		levels:    levelsFrom(minLogLevel),
+		xmppConn:  conn,
+		receiver:  receiver,
+		formatter: &logrus.TextFormatter{DisableColors: true},
 	}, nil
 }
 
@@ -52,12 +54,13 @@ func (h *Hook) Levels() []logrus.Level {
 }
 
 func (h *Hook) Fire(entry *logrus.Entry) error {
-	s, err := entry.String()
+	buf, err := h.formatter.Format(entry)
 	if err != nil {
 		return err
 	}
+
 	h.xmppConnMtx.Lock()
-	err = h.xmppConn.Send(h.receiver, s)
+	err = h.xmppConn.Send(h.receiver, string(buf))
 	h.xmppConnMtx.Unlock()
 	return err
 }
